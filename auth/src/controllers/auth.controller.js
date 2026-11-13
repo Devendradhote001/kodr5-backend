@@ -90,7 +90,7 @@ const loginController = async (req, res) => {
 
     // 6. generate token
     let token = jwt.sign({ id: isExists._id }, process.env.JWT_SECRET_KEY, {
-      expiresIn: "10s",
+      expiresIn: "1h",
     });
 
     // 7. save token in cookies
@@ -113,7 +113,25 @@ const loginController = async (req, res) => {
   }
 };
 
+const logoutController = async (req, res) => {
+  try {
+    res.clearCookie("tala");
+
+    return res.status(200).json({
+      success: true,
+      message: "User logged out",
+    });
+  } catch (error) {
+    console.log("logout error", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
 module.exports = {
   registerController,
   loginController,
+  logoutController,
 };
