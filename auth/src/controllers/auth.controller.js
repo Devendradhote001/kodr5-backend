@@ -1,6 +1,8 @@
 const UserModel = require("../models/user.model");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const cacheInstance = require("../config/redis");
+const AppError = require("../utils/AppError");
 
 const registerController = async (req, res) => {
   try {
@@ -58,63 +60,65 @@ const registerController = async (req, res) => {
 };
 
 const loginController = async (req, res) => {
-  try {
-    // 1. get data from body
-    let { email, password } = req.body;
+  // 1. get data from body
+  let { email, password } = req.body;
 
-    // 2. validate that data
-    if (!email || !password)
-      return res.status(400).json({
-        success: false,
-        message: "All fileds are required",
-      });
+  // 2. validate that data
+  if (!email || !password) throw new Error("all fields are required", 400);
+  //   3. check user exists or not
+  let isExists = await UserModel.findOne({ email });
 
-    //   3. check user exists or not
-    let isExists = await UserModel.findOne({ email });
-
-    // 4. return error when user exists
-    if (!isExists)
-      return res.status(404).json({
-        message: "user not found",
-        success: false,
-      });
-
-    //   5. check password
-    let checkPass = bcrypt.compareSync(password, isExists.password);
-
-    if (!checkPass)
-      return res.status(400).json({
-        message: "Invalid credentials",
-        success: false,
-      });
-
-    // 6. generate token
-    let token = jwt.sign({ id: isExists._id }, process.env.JWT_SECRET_KEY, {
-      expiresIn: "1h",
-    });
-
-    // 7. save token in cookies
-    res.cookie("tala", token, {
-      httpOnly: true,
-      maxAge: 60 * 60 * 1000,
-    });
-
-    // 8. send the res
-    return res.status(201).json({
-      success: true,
-      message: "user logged in",
-      data: isExists,
-    });
-  } catch (error) {
-    return res.status(500).json({
-      message: "Interbal server error",
+  // 4. return error when user exists
+  if (!isExists)
+    return res.status(404).json({
+      message: "user not found",
       success: false,
     });
-  }
+
+  //   5. check password
+  let checkPass = bcrypt.compareSync(password, isExists.password);
+
+  if (!checkPass)
+    return res.status(400).json({
+      message: "Invalid credentials",
+      success: false,
+    });
+
+  // 6. generate token
+  let token = jwt.sign({ id: isExists._id }, process.env.JWT_SECRET_KEY, {
+    expiresIn: "1h",
+  });
+
+  // 7. save token in cookies
+  res.cookie("tala", token, {
+    httpOnly: true,
+    maxAge: 60 * 60 * 1000,
+  });
+
+  // 8. send the res
+  return res.status(201).json({
+    success: true,
+    message: "user logged in",
+    data: isExists,
+  });
 };
 
 const logoutController = async (req, res) => {
   try {
+    let tala = req.cookies.tala;
+
+    if (!tala)
+      return res.status(401).json({
+        message: "Unauthorized request",
+        success: false,
+      });
+
+    let decode = jwt.verify(tala, process.env.JWT_SECRET_KEY);
+
+    let tokenExpiry = Math.floor(decode.exp - Date.now() / 1000);
+
+    await cacheInstance.set(tala, "blacklisted", "EX", tokenExpiry);
+
     res.clearCookie("tala");
 
     return res.status(200).json({

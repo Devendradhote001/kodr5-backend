@@ -1,3 +1,4 @@
+const cacheInstance = require("../config/redis");
 const UserModel = require("../models/user.model");
 const jwt = require("jsonwebtoken");
 
@@ -10,6 +11,15 @@ const authMiddleware = async (req, res, next) => {
         success: false,
         message: "Token not found",
       });
+
+    let isInBlacklist = await cacheInstance.get(token);
+
+    if (isInBlacklist) {
+      return res.status(401).json({
+        success: false,
+        message: "Bhggja chor",
+      });
+    }
 
     let decode = jwt.verify(token, process.env.JWT_SECRET_KEY);
 
