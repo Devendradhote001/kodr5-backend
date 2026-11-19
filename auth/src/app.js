@@ -7,6 +7,7 @@ const cookieParser = require("cookie-parser");
 const connectDB = require("./config/db");
 const cacheInstance = require("./config/redis");
 const errorMiddleware = require("./middlewares/error.middleware");
+const passport = require("passport");
 
 const app = express();
 
@@ -26,6 +27,8 @@ app.use(
     credentials: true,
   }),
 );
+
+app.use(passport.initialize());
 
 app.use(express.json());
 app.use(cookieParser());

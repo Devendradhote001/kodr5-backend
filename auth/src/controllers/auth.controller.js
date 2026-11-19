@@ -3,86 +3,72 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const cacheInstance = require("../config/redis");
 const AppError = require("../utils/AppError");
+const asyncHandler = require("../utils/asyncHandler");
 
-const registerController = async (req, res) => {
-  try {
-    // 1. get data from body
-    let { name, email, password, mobile } = req.body;
-
-    // 2. validate that data
-    if (!name || !email || !password)
-      return res.status(400).json({
-        success: false,
-        message: "All fileds are required",
-      });
-
-    //   3. check user exists or not
-    let isExists = await UserModel.findOne({ email });
-
-    // 4. return error when user exists
-    if (isExists)
-      return res.status(409).json({
-        message: "Email is already exists",
-        success: false,
-      });
-
-    //   5. password hash
-    let hashPass = bcrypt.hashSync(password, 12);
-
-    // 6. save user in db
-    let user = await UserModel.create({
-      name,
-      email,
-      password: hashPass,
-      mobile,
-    });
-
-    // 7. generate token
-    let token = jwt.sign({ id: user._id }, process.env.JWT_SECRET_KEY, {
-      expiresIn: "1h",
-    });
-
-    // 8. save token in cookies
-    res.cookie("tala", token);
-
-    // 9. send the res
-    return res.status(201).json({
-      success: true,
-      message: "User registred successfully",
-      data: user,
-    });
-  } catch (error) {
-    return res.status(500).json({
-      message: "Interbal server error",
-      success: false,
-    });
-  }
-};
-
-const loginController = async (req, res) => {
+const registerController = asyncHandler(async (req, res) => {
   // 1. get data from body
-  let { email, password } = req.body;
+  let { name, email, password, mobile } = req.body;
 
   // 2. validate that data
-  if (!email || !password) throw new Error("all fields are required", 400);
+  if (!name || !email || !password)
+    return res.status(400).json({
+      success: false,
+      message: "All fileds are required",
+    });
+
   //   3. check user exists or not
   let isExists = await UserModel.findOne({ email });
 
   // 4. return error when user exists
-  if (!isExists)
-    return res.status(404).json({
-      message: "user not found",
+  if (isExists)
+    return res.status(409).json({
+      message: "Email is already exists",
       success: false,
     });
+
+  //   5. password hash
+  let hashPass = bcrypt.hashSync(password, 12);
+
+  // 6. save user in db
+  let user = await UserModel.create({
+    name,
+    email,
+    password: hashPass,
+    mobile,
+  });
+
+  // 7. generate token
+  let token = jwt.sign({ id: user._id }, process.env.JWT_SECRET_KEY, {
+    expiresIn: "1h",
+  });
+
+  // 8. save token in cookies
+  res.cookie("tala", token);
+
+  // 9. send the res
+  return res.status(201).json({
+    success: true,
+    message: "User registred successfully",
+    data: user,
+  });
+});
+
+const loginController = asyncHandler(async (req, res) => {
+  // 1. get data from body
+  let { email, password } = req.body;
+
+  // 2. validate that data
+  if (!email || !password) throw new AppError("all fields are required", 400);
+  //   3. check user exists or not
+  let isExists = UserModel.findOne({ email });
+
+  // 4. return error when user exists
+  if (!isExists) throw new AppError("user not found", 404);
 
   //   5. check password
   let checkPass = bcrypt.compareSync(password, isExists.password);
 
-  if (!checkPass)
-    return res.status(400).json({
-      message: "Invalid credentials",
-      success: false,
-    });
+  if (!checkPass) throw new AppError("Invalid credentials", 401);
 
   // 6. generate token
   let token = jwt.sign({ id: isExists._id }, process.env.JWT_SECRET_KEY, {
@@ -101,38 +87,30 @@ const loginController = async (req, res) => {
     message: "user logged in",
     data: isExists,
   });
-};
+});
 
-const logoutController = async (req, res) => {
-  try {
-    let tala = req.cookies.tala;
+const logoutController = asyncHandler(async (req, res) => {
+  let tala = req.cookies.tala;
 
-    if (!tala)
-      return res.status(401).json({
-        message: "Unauthorized request",
-        success: false,
-      });
-
-    let decode = jwt.verify(tala, process.env.JWT_SECRET_KEY);
-
-    let tokenExpiry = Math.floor(decode.exp - Date.now() / 1000);
-
-    await cacheInstance.set(tala, "blacklisted", "EX", tokenExpiry);
-
-    res.clearCookie("tala");
-
-    return res.status(200).json({
-      success: true,
-      message: "User logged out",
-    });
-  } catch (error) {
-    console.log("logout error", error);
-    return res.status(500).json({
+  if (!tala)
+    return res.status(401).json({
+      message: "Unauthorized request",
       success: false,
-      message: "Internal server error",
     });
-  }
-};
+
+  let decode = jwt.verify(tala, process.env.JWT_SECRET_KEY);
+
+  let tokenExpiry = Math.floor(decode.exp - Date.now() / 1000);
+
+  await cacheInstance.set(tala, "blacklisted", "EX", tokenExpiry);
+
+  res.clearCookie("tala");
+
+  return res.status(200).json({
+    success: true,
+    message: "User logged out",
+  });
+});
 
 module.exports = {
   registerController,
